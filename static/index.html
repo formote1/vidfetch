@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VidFetch · Video downloader</title>
+  <meta name="description" content="Clean, fast video & audio downloader powered by yt-dlp and FFmpeg.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <!-- Ambient background glows -->
+  <div class="bg-glow bg-glow--a" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow--b" aria-hidden="true"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
+
+  <div class="shell">
+
+    <!-- Header -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 4.5v15l13-7.5z" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+        <div class="brand__text">
+          <h1>VidFetch</h1>
+          <p>yt-dlp · FFmpeg</p>
+        </div>
+      </div>
+      <div class="topbar__status">
+        <span class="dot" id="server-dot"></span>
+        <span id="server-status">Checking server…</span>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <section class="hero">
+      <span class="pill">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.5-6.3 4.5L8 14 2 9.4h7.6z"/>
+        </svg>
+        Free &amp; open-source · No ads · No account
+      </span>
+      <h2>Grab any video.<br><span class="grad">Keep it forever.</span></h2>
+      <p class="hero__sub">Paste a link to download video or audio in crisp quality —
+        merged and converted locally with FFmpeg.</p>
+    </section>
+
+    <!-- URL input -->
+    <section class="card input-card" id="input-card">
+      <form id="fetch-form" autocomplete="off">
+        <label class="sr-only" for="url">Video URL</label>
+        <div class="input-row">
+          <span class="input-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/>
+              <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>
+            </svg>
+          </span>
+          <input id="url" name="url" type="text" spellcheck="false"
+                 placeholder="Paste a YouTube, Vimeo, Twitch, TikTok link…"
+                 aria-label="Video URL">
+          <button class="btn btn--primary" type="submit" id="fetch-btn">
+            <span class="btn__label">Fetch</span>
+            <span class="btn__spinner" hidden></span>
+          </button>
+        </div>
+        <div class="input-card__hint">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>
+          </svg>
+          <span id="hint-text">Supports 1,000+ sites handled by yt-dlp</span>
+        </div>
+      </form>
+    </section>
+
+    <!-- Video info / format picker -->
+    <section class="card info-card" id="info-card" hidden>
+      <div class="info-card__thumb">
+        <span class="thumb-ph">—</span>
+        <img id="thumb" alt="" hidden>
+        <span class="thumb-badge" id="thumb-badge" hidden></span>
+      </div>
+      <div class="info-card__body">
+        <div class="info-card__meta">
+          <span class="chip" id="meta-site">—</span>
+          <span class="chip chip--muted" id="meta-duration" hidden></span>
+          <span class="chip chip--muted" id="meta-uploader" hidden></span>
+        </div>
+        <h3 id="info-title">—</h3>
+        <div class="tabs" role="tablist" aria-label="Format type">
+          <button class="tab is-active" data-tab="video" role="tab" aria-selected="true">Video</button>
+          <button class="tab" data-tab="audio" role="tab" aria-selected="false">Audio</button>
+        </div>
+        <div class="formats" id="formats">
+          <!-- rendered by app.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Download progress -->
+    <section class="card progress-card" id="progress-card" hidden>
+      <div class="progress-card__head">
+        <div class="progress-card__title">
+          <h4 id="progress-title">Downloading…</h4>
+          <p id="progress-phase">Starting</p>
+        </div>
+        <div class="progress-card__pct">
+          <span id="progress-pct">0%</span>
+        </div>
+      </div>
+      <div class="bar"><div class="bar__fill" id="bar-fill"></div></div>
+      <div class="progress-card__foot">
+        <span id="progress-speed" class="stat">—</span>
+        <span id="progress-eta" class="stat">—</span>
+        <div class="progress-card__actions">
+          <button class="btn btn--ghost" id="cancel-btn" hidden>Cancel</button>
+          <a class="btn btn--primary" id="save-btn" hidden download>Save file</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Downloads library -->
+    <section class="lib" id="lib">
+      <div class="lib__head">
+        <h3>Your downloads</h3>
+        <span class="lib__count" id="lib-count">0 files</span>
+      </div>
+      <div class="lib__grid" id="lib-grid">
+        <div class="empty-state" id="empty-state">
+          <div class="empty-state__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor"
+                 stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v12m0 0l-4-4m4 4l4-4"/>
+              <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+            </svg>
+          </div>
+          <p>Nothing here yet — your finished downloads will appear in this library.</p>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>VidFetch runs fully on your machine — powered by
+        <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>
+        and <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a>.</p>
+      <p class="footer__legal">Please only download content you have the rights to.</p>
+    </footer>
+
+  </div>
+
+  <!-- Toasts -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
