@@ -17,25 +17,42 @@ it runs on the standard library.
 - ✂️ **Cancel support** — abort a running or queued download cleanly (playlists
   cancel everything still queued)
 - 🛡️ **Local-first** — everything runs on your machine; no accounts, no ads
-- 🖥️ **Responsive UI** — narrow editorial column on small screens, two-pane
-  desktop layout (downloads left, library sidebar right) on wide screens;
-  warm monochrome palette, no CDNs, no frameworks
+- 🖥️ **Responsive web UI** — narrow editorial column on small screens, two-pane
+  desktop layout on wide screens; warm monochrome palette, no CDNs
+- 💻 **Desktop app** — `python3 desktop.py` opens a native window with its own
+  app-style UI (toolbar, panes, status bar) over the same local engine
 
 ## Requirements
 
 - Python 3.9+
 - `yt-dlp` (`apt install yt-dlp` or `pip install yt-dlp`)
 - `ffmpeg` with `ffprobe` (`apt install ffmpeg`)
+- (Desktop app only) `pywebview` (`pip install pywebview`) plus the platform
+  webview runtime — GTK + WebKit2 on Linux, built-in WebKit on macOS,
+  WebView2 on Windows
 
 ## Quick start
 
+**Browser version** (self-hosted web app):
+
 ```bash
 python3 server.py
-# or
-./run.sh
 ```
 
 Then open **http://localhost:8000**, paste a link, choose a format, done.
+
+**Desktop version** (native window, its own desktop UI at
+`/desktop`, different look from the website):
+
+```bash
+pip install pywebview
+python3 desktop.py
+```
+
+The desktop app runs the same local server on port 8200 (so it can sit
+alongside the browser version on 8000) and opens a native window.
+
+> Note: `run.sh` was removed — `python3 server.py` is all you need.
 
 ## Configuration (environment variables)
 
@@ -103,6 +120,8 @@ CLI flags `--host`, `--port` and `--debug` override `VIDFETCH_HOST`/`VIDFETCH_PO
 ```
 server.py        HTTP server + JSON API (stdlib only)
 downloader.py    download engine around the yt-dlp Python API
-static/          frontend (index.html, style.css, app.js, favicon.svg)
+desktop.py       desktop launcher (native window over the local server)
+static/          frontend (index.html, style.css, app.js — web UI;
+                 desktop.html, desktop.css, desktop.js — desktop UI)
 downloads/       finished files + job metadata (created at runtime)
 ```

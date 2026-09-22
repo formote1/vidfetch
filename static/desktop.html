@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>VidFetch</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="desktop.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- app bar -->
+    <header class="appbar">
+      <span class="appbar__brand">VidFetch</span>
+      <span class="appbar__status">
+        <span class="dot" id="server-dot"></span>
+        <span id="server-status">checking…</span>
+      </span>
+      <a class="appbar__open" id="open-browser" href="/" target="_blank" rel="noopener">open in browser</a>
+    </header>
+
+    <!-- toolbar -->
+    <section class="toolbar">
+      <form id="fetch-form" class="urlrow" autocomplete="off">
+        <label class="sr-only" for="url">Video URL</label>
+        <input id="url" name="url" type="text" spellcheck="false"
+               placeholder="paste a youtube, vimeo, twitch, tiktok link…">
+        <button class="btn btn--primary" type="submit" id="fetch-btn">
+          <span class="btn__label">Fetch</span>
+          <span class="btn__spinner" hidden></span>
+        </button>
+      </form>
+
+      <div class="toolbar__row">
+        <div class="seg" role="group" aria-label="Output type">
+          <button class="seg-btn is-active" data-kind="video" type="button">Video</button>
+          <button class="seg-btn" data-kind="audio" type="button">Audio only</button>
+        </div>
+        <div class="pills" id="quality-pills"></div>
+        <button class="auto-pill" id="auto-pill" type="button" hidden>Auto · MP3 / M4A</button>
+      </div>
+    </section>
+
+    <!-- main panes -->
+    <div class="panes">
+
+      <main class="pane pane--main">
+        <div class="panel" id="info-panel" hidden>
+          <div class="info">
+            <div class="info__thumb">
+              <span class="thumb-ph" id="thumb-ph">—</span>
+              <img id="thumb" alt="" hidden>
+              <span class="thumb-badge" id="thumb-badge" hidden></span>
+            </div>
+            <div class="info__body">
+              <div class="info__meta">
+                <span class="chip" id="meta-site">—</span>
+                <span class="chip chip--muted" id="meta-duration" hidden></span>
+                <span class="chip chip--muted" id="meta-uploader" hidden></span>
+              </div>
+              <h2 id="info-title">—</h2>
+
+              <!-- playlist picker -->
+              <div class="playlist" id="playlist-panel" hidden>
+                <div class="playlist__head">
+                  <label class="pl-all">
+                    <input type="checkbox" id="pl-select-all" checked>
+                    <span>all</span>
+                  </label>
+                  <span id="pl-selected">0 of 0 selected</span>
+                </div>
+                <div class="playlist__list" id="playlist-list"></div>
+              </div>
+
+              <p class="audio-note" id="audio-note" hidden>
+                audio is merged automatically — M4A when the source has it, otherwise MP3.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" id="progress-panel" hidden>
+          <div class="progress__head">
+            <div class="progress__title">
+              <h3 id="progress-title">Downloading…</h3>
+              <p id="progress-phase">Starting</p>
+            </div>
+            <span class="progress__pct" id="progress-pct">0%</span>
+          </div>
+          <div class="bar"><div class="bar__fill" id="bar-fill"></div></div>
+          <div class="progress__stats">
+            <span id="progress-size">—</span>
+            <span id="progress-speed">—</span>
+            <span id="progress-eta">—</span>
+            <div class="progress__actions">
+              <button class="btn btn--ghost" id="cancel-btn" hidden>Cancel</button>
+              <a class="btn btn--primary" id="save-btn" hidden download>Save file</a>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-pane" id="empty-pane">
+          <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+          </svg>
+          <p>paste a link above to get started</p>
+        </div>
+      </main>
+
+      <aside class="pane pane--side">
+        <div class="panel panel--lib">
+          <div class="lib-head">
+            <h3>Library</h3>
+            <span id="lib-count">0 files</span>
+          </div>
+          <div class="lib-list" id="lib-list">
+            <div class="lib-empty" id="lib-empty">no downloads yet</div>
+          </div>
+        </div>
+      </aside>
+
+    </div>
+
+    <!-- status bar -->
+    <footer class="statusbar">
+      <span id="status-left">server offline</span>
+      <span class="statusbar__right" id="status-right"></span>
+    </footer>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+  </div>
+
+  <script src="desktop.js" defer></script>
+</body>
+</html>

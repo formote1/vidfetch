@@ -81,6 +81,8 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 return self._send_bytes(200, INDEX_HTML, "text/html; charset=utf-8",
                                         _NO_CACHE)
+            if path == "/desktop":
+                return self._serve_static("/desktop.html")
             if path.startswith("/api/"):
                 return self._handle_api_get(path)
             served = self._serve_static(path)
@@ -302,22 +304,31 @@ class Handler(BaseHTTPRequestHandler):
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
+def make_server(host: str, port: int):
+    """Build the HTTP server without starting it (used by the web entry and
+    by the desktop app, which runs it on a background thread)."""
+    return ThreadingHTTPServer((host, port), Handler)
+
+
 def main():
     ap = argparse.ArgumentParser(description="VidFetch — yt-dlp powered downloader")
     ap.add_argument("--host", default=os.environ.get("VIDFETCH_HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("VIDFETCH_PORT", "8000")))
     ap.add_argument("--debug", action="store_true")
+    ap.add_argument("--quiet", action="store_true",
+                    help="suppress the startup banner (used by the desktop app)")
     args = ap.parse_args()
 
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
-    url = f"http://{'localhost' if args.host in ('0.0.0.0', '::') else args.host}:{args.port}"
-    print(f"\n  VidFetch is running at {url}\n"
-          f"  Downloads are stored in {os.path.abspath(dl.DOWNLOAD_DIR)}\n"
-          f"  Press Ctrl+C to stop.\n")
+    server = make_server(args.host, args.port)
+    if not args.quiet:
+        url = f"http://{'localhost' if args.host in ('0.0.0.0', '::') else args.host}:{args.port}"
+        print(f"\n  VidFetch is running at {url}\n"
+              f"  Downloads are stored in {os.path.abspath(dl.DOWNLOAD_DIR)}\n"
+              f"  Press Ctrl+C to stop.\n")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
