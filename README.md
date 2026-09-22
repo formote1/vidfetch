@@ -17,7 +17,9 @@ it runs on the standard library.
 - ✂️ **Cancel support** — abort a running or queued download cleanly (playlists
   cancel everything still queued)
 - 🛡️ **Local-first** — everything runs on your machine; no accounts, no ads
-- 🖥️ **Minimal dark UI** — warm monochrome palette, no CDNs, no frameworks
+- 🖥️ **Responsive UI** — narrow editorial column on small screens, two-pane
+  desktop layout (downloads left, library sidebar right) on wide screens;
+  warm monochrome palette, no CDNs, no frameworks
 
 ## Requirements
 
