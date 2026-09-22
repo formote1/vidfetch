@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
   <title>VidFetch · Video downloader</title>
   <meta name="description" content="Clean, fast video & audio downloader powered by yt-dlp and FFmpeg.">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -13,34 +14,28 @@
   <!-- Hairline stripes along the edges -->
   <div class="edges" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 
-  <div class="shell">
+  <!-- Fixed top bar -->
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="/">VidFetch</a>
+      <nav class="topbar__nav" aria-label="Primary">
+        <span class="topbar__status">
+          <span class="dot" id="server-dot"></span>
+          <span id="server-status">checking…</span>
+        </span>
+        <a href="https://github.com/formote1/vidfetch" target="_blank" rel="noopener">source</a>
+      </nav>
+    </div>
+  </header>
 
-    <!-- Header -->
-    <header class="topbar">
-      <div class="brand">
-        <div class="brand__mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round">
-            <path d="M6 4.5v15l13-7.5z" fill="currentColor" stroke="none"/>
-          </svg>
-        </div>
-        <div class="brand__text">
-          <h1>VidFetch</h1>
-          <p>yt-dlp · FFmpeg</p>
-        </div>
-      </div>
-      <div class="topbar__status">
-        <span class="dot" id="server-dot"></span>
-        <span id="server-status">Checking server…</span>
-      </div>
-    </header>
+  <main class="shell">
 
-    <!-- Hero -->
-    <section class="hero">
-      <span class="pill">Free &amp; open-source · No ads · No account</span>
-      <h2>Grab any video.<br>Keep it forever.</h2>
-      <p class="hero__sub">Paste a link, pick a quality — video and audio are
-        merged automatically and saved straight to your device.</p>
+    <!-- Intro (editorial prose) -->
+    <section class="intro">
+      <p>Paste a link, pick a quality — the audio is added automatically and the
+        file lands on your device. Runs locally, powered by
+        <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>
+        and <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a>.</p>
     </section>
 
     <!-- URL input -->
@@ -49,14 +44,14 @@
         <label class="sr-only" for="url">Video URL</label>
         <div class="input-row">
           <span class="input-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor"
                  stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/>
               <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>
             </svg>
           </span>
           <input id="url" name="url" type="text" spellcheck="false"
-                 placeholder="Paste a YouTube, Vimeo, Twitch, TikTok link…"
+                 placeholder="paste a youtube, vimeo, twitch, tiktok link…"
                  aria-label="Video URL">
           <button class="btn btn--primary" type="submit" id="fetch-btn">
             <span class="btn__label">Fetch</span>
@@ -68,7 +63,7 @@
                stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>
           </svg>
-          <span id="hint-text">Supports 1,000+ sites handled by yt-dlp</span>
+          <span id="hint-text">supports 1,000+ sites handled by yt-dlp — no account, no ads</span>
         </div>
       </form>
     </section>
@@ -99,7 +94,7 @@
         <!-- audio auto-format -->
         <div class="auto-pill" id="auto-pill" hidden>
           <span class="auto-pill__q">Auto</span>
-          <span class="auto-pill__tag">MP3 / M4A · best available</span>
+          <span class="auto-pill__tag">— MP3 / M4A, best available</span>
         </div>
 
         <p class="audio-note" id="audio-note" hidden>
@@ -107,7 +102,7 @@
                stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>
           </svg>
-          Audio is merged automatically — MP3 for best compatibility, M4A when the source has it.
+          audio is merged automatically — M4A when the source has it, otherwise MP3.
         </p>
       </div>
     </section>
@@ -144,25 +139,30 @@
       <div class="lib__grid" id="lib-grid">
         <div class="empty-state" id="empty-state">
           <div class="empty-state__icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor"
+            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor"
                  stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 3v12m0 0l-4-4m4 4l4-4"/>
               <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
             </svg>
           </div>
-          <p>Nothing here yet — your finished downloads will appear in this library.</p>
+          <p>nothing here yet — finished downloads will appear in this list.</p>
         </div>
       </div>
     </section>
 
-    <footer class="footer">
-      <p>VidFetch runs fully on your machine — powered by
-        <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>
-        and <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a>.</p>
-      <p class="footer__legal">Please only download content you have the rights to.</p>
-    </footer>
+  </main>
 
-  </div>
+  <!-- Footer: links separated by pipes -->
+  <footer class="footer">
+    <div class="footer__links">
+      <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>
+      <span class="footer__sep">|</span>
+      <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a>
+      <span class="footer__sep">|</span>
+      <a href="https://github.com/formote1/vidfetch" target="_blank" rel="noopener">source</a>
+    </div>
+    <p class="footer__legal">runs fully on your machine — please only download content you have the rights to.</p>
+  </footer>
 
   <!-- Toasts -->
   <div class="toasts" id="toasts" aria-live="polite"></div>
