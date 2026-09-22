@@ -33,7 +33,7 @@ BLOCK_PRIVATE_IPS = os.environ.get("VIDFETCH_BLOCK_PRIVATE_IPS", "1") == "1"
 FFMPEG_LOCATION = os.environ.get("VIDFETCH_FFMPEG", None) or None
 
 VIDEO_QUALITIES = ("best", "2160", "1440", "1080", "720", "480", "360")
-AUDIO_CODECS = ("mp3", "m4a", "opus", "flac")
+AUDIO_CODECS = ("auto", "mp3", "m4a", "opus", "flac")
 
 MEDIA_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".mp3", ".m4a",
               ".opus", ".flac", ".wav", ".aac", ".ogg", ".oga", ".wma"}
@@ -118,6 +118,8 @@ class Job:
     progress: float = 0.0
     speed: Optional[float] = None
     eta: Optional[float] = None
+    downloaded_bytes: Optional[float] = None
+    total_bytes: Optional[float] = None
     error: Optional[str] = None
     title: Optional[str] = None
     thumbnail: Optional[str] = None
@@ -146,6 +148,8 @@ class Job:
             "progress": round(self.progress, 1),
             "speed": self.speed,
             "eta": self.eta,
+            "downloaded_bytes": self.downloaded_bytes,
+            "total_bytes": self.total_bytes,
             "error": self.error,
             "title": self.title,
             "thumbnail": self.thumbnail,
@@ -378,9 +382,12 @@ class DownloadManager:
                 {"key": "FFmpegMetadata"},
             ]
         else:
+            # "auto" resolves to M4A (lossless when the source is AAC, else
+            # converted); other codecs pass straight through.
+            acodec = job.quality if job.quality in ("mp3", "m4a", "opus", "flac") else "m4a"
             opts["postprocessors"] = [
                 {"key": "FFmpegExtractAudio",
-                 "preferredcodec": job.quality,
+                 "preferredcodec": acodec,
                  "preferredquality": "192"},
                 {"key": "EmbedThumbnail"},
             ]
@@ -417,7 +424,7 @@ class DownloadManager:
             q = job.quality
             if q == "mp3":
                 return "bestaudio/best"
-            if q == "m4a":
+            if q in ("auto", "m4a"):
                 return "bestaudio[ext=m4a]/bestaudio/best"
             if q == "opus":
                 return "bestaudio[ext=webm]/bestaudio/best"
@@ -466,6 +473,7 @@ class DownloadManager:
             job.phase = f"Downloading {label}…"
             job.speed = d.get("speed")
             job.eta = d.get("eta")
+            self._update_bytes(job)
             job.progress = self._overall_progress(job)
         elif status == "finished":
             idx = job._current_part_idx
@@ -475,9 +483,22 @@ class DownloadManager:
                 part["done"] = part["total"]
             job.speed = None
             job.eta = None
+            self._update_bytes(job)
             if job.status != ST_PROCESSING:
                 job.phase = "Processing…"
                 job.progress = self._overall_progress(job)
+
+    def _update_bytes(self, job: Job):
+        """Aggregate downloaded/total bytes across all download parts."""
+        done = 0.0
+        total = 0.0
+        for part in job._parts:
+            d = part.get("done") or 0.0
+            t = part.get("total") or d
+            done += d
+            total += t
+        job.downloaded_bytes = done
+        job.total_bytes = total
 
     @staticmethod
     def _part_label(info: dict) -> str:

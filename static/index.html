@@ -10,10 +10,8 @@
 </head>
 <body>
 
-  <!-- Ambient background glows -->
-  <div class="bg-glow bg-glow--a" aria-hidden="true"></div>
-  <div class="bg-glow bg-glow--b" aria-hidden="true"></div>
-  <div class="bg-grid" aria-hidden="true"></div>
+  <!-- Hairline stripes along the edges -->
+  <div class="edges" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 
   <div class="shell">
 
@@ -39,16 +37,10 @@
 
     <!-- Hero -->
     <section class="hero">
-      <span class="pill">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2l2.4 7.4H22l-6 4.6 2.3 7.4-6.3-4.5-6.3 4.5L8 14 2 9.4h7.6z"/>
-        </svg>
-        Free &amp; open-source · No ads · No account
-      </span>
-      <h2>Grab any video.<br><span class="grad">Keep it forever.</span></h2>
-      <p class="hero__sub">Paste a link to download video or audio in crisp quality —
-        merged and converted locally with FFmpeg.</p>
+      <span class="pill">Free &amp; open-source · No ads · No account</span>
+      <h2>Grab any video.<br>Keep it forever.</h2>
+      <p class="hero__sub">Paste a link, pick a quality — video and audio are
+        merged automatically and saved straight to your device.</p>
     </section>
 
     <!-- URL input -->
@@ -81,7 +73,7 @@
       </form>
     </section>
 
-    <!-- Video info / format picker -->
+    <!-- Video info + format picker -->
     <section class="card info-card" id="info-card" hidden>
       <div class="info-card__thumb">
         <span class="thumb-ph">—</span>
@@ -95,13 +87,28 @@
           <span class="chip chip--muted" id="meta-uploader" hidden></span>
         </div>
         <h3 id="info-title">—</h3>
-        <div class="tabs" role="tablist" aria-label="Format type">
-          <button class="tab is-active" data-tab="video" role="tab" aria-selected="true">Video</button>
-          <button class="tab" data-tab="audio" role="tab" aria-selected="false">Audio</button>
+
+        <div class="seg" role="group" aria-label="Output type">
+          <button class="seg-btn is-active" data-kind="video" type="button">Video</button>
+          <button class="seg-btn" data-kind="audio" type="button">Audio only</button>
         </div>
-        <div class="formats" id="formats">
-          <!-- rendered by app.js -->
+
+        <!-- video quality pills (rendered by app.js) -->
+        <div class="pills" id="quality-pills"></div>
+
+        <!-- audio auto-format -->
+        <div class="auto-pill" id="auto-pill" hidden>
+          <span class="auto-pill__q">Auto</span>
+          <span class="auto-pill__tag">MP3 / M4A · best available</span>
         </div>
+
+        <p class="audio-note" id="audio-note" hidden>
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>
+          </svg>
+          Audio is merged automatically — MP3 for best compatibility, M4A when the source has it.
+        </p>
       </div>
     </section>
 
@@ -118,6 +125,7 @@
       </div>
       <div class="bar"><div class="bar__fill" id="bar-fill"></div></div>
       <div class="progress-card__foot">
+        <span id="progress-size" class="stat">—</span>
         <span id="progress-speed" class="stat">—</span>
         <span id="progress-eta" class="stat">—</span>
         <div class="progress-card__actions">

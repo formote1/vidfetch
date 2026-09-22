@@ -18,13 +18,16 @@ const els = {
   metaDuration: $("#meta-duration"),
   metaUploader: $("#meta-uploader"),
   infoTitle: $("#info-title"),
-  tabs: document.querySelectorAll(".tab"),
-  formats: $("#formats"),
+  segBtns: document.querySelectorAll(".seg-btn"),
+  qualityPills: $("#quality-pills"),
+  autoPill: $("#auto-pill"),
+  audioNote: $("#audio-note"),
   progressCard: $("#progress-card"),
   progressTitle: $("#progress-title"),
   progressPhase: $("#progress-phase"),
   progressPct: $("#progress-pct"),
   barFill: $("#bar-fill"),
+  progressSize: $("#progress-size"),
   progressSpeed: $("#progress-speed"),
   progressEta: $("#progress-eta"),
   cancelBtn: $("#cancel-btn"),
@@ -37,9 +40,12 @@ const els = {
 
 /* ---------------- state ---------------- */
 let meta = null;            // fetched /api/info result
+let kind = "video";         // "video" | "audio"
+let quality = "best";       // selected video quality
 let activeJobId = null;     // job shown in the progress card
 let lastJobJson = "";       // for diffing library renders
 let knownJobs = new Map();  // id -> last status (for transition toasts)
+let autoSaved = new Set();  // job ids already auto-saved (avoid repeats)
 
 /* ---------------- helpers ---------------- */
 function fmtBytes(n) {
@@ -71,12 +77,12 @@ function domainOf(url) {
 function toast(msg, type = "info") {
   const el = document.createElement("div");
   el.className = `toast${type === "error" ? " toast--error" : ""}${type === "ok" ? " toast--ok" : ""}`;
-  const icon = type === "error"
-    ? '<svg class="toast__icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5h.01"/></svg>'
-    : type === "ok"
-      ? '<svg class="toast__icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>'
-      : '<svg class="toast__icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>';
-  el.innerHTML = `${icon}<div class="toast__msg"></div>`;
+  const inner = `
+    <svg class="toast__icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5h.01"/>
+    </svg>`;
+  el.innerHTML = `${inner}<div class="toast__msg"></div>`;
   el.querySelector(".toast__msg").textContent = msg;
   els.toasts.appendChild(el);
   setTimeout(() => {
@@ -147,22 +153,29 @@ function renderInfo(data) {
   }
   els.thumbBadge.hidden = false;
   els.thumbBadge.textContent = data.is_live ? "LIVE" : (data.duration_string || "video");
-  renderFormats("video");
+  setKind(kind); // re-render the selector for the active kind
   els.infoCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-/* ---------------- format tabs ---------------- */
-els.tabs.forEach((tab) => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => {
-      const on = t === tab;
-      t.classList.toggle("is-active", on);
-      t.setAttribute("aria-selected", String(on));
-    });
-    renderFormats(tab.dataset.tab);
-  });
+/* ---------------- video / audio toggle ---------------- */
+els.segBtns.forEach((btn) => {
+  btn.addEventListener("click", () => setKind(btn.dataset.kind));
 });
 
+function setKind(next) {
+  kind = next === "audio" ? "audio" : "video";
+  els.segBtns.forEach((b) => {
+    const on = b.dataset.kind === kind;
+    b.classList.toggle("is-active", on);
+    b.setAttribute("aria-pressed", String(on));
+  });
+  els.qualityPills.hidden = kind !== "video";
+  els.autoPill.hidden = kind === "video";
+  els.audioNote.hidden = kind === "video";
+  if (kind === "video") renderQualityPills();
+}
+
+/* ---------------- quality pills ---------------- */
 const VIDEO_FORMATS = [
   { q: "best", label: "Best", tag: "MP4" },
   { q: "2160", label: "2160p", tag: "4K" },
@@ -172,38 +185,37 @@ const VIDEO_FORMATS = [
   { q: "480", label: "480p", tag: "SD" },
   { q: "360", label: "360p", tag: "SD" },
 ];
-const AUDIO_FORMATS = [
-  { q: "mp3", label: "MP3", tag: "192 kbps" },
-  { q: "m4a", label: "M4A", tag: "AAC" },
-  { q: "opus", label: "OPUS", tag: "Efficient" },
-  { q: "flac", label: "FLAC", tag: "Lossless" },
-];
 
-function renderFormats(kind) {
-  const list = kind === "video" ? VIDEO_FORMATS : AUDIO_FORMATS;
-  els.formats.innerHTML = "";
-  for (const f of list) {
+function renderQualityPills() {
+  els.qualityPills.innerHTML = "";
+  for (const f of VIDEO_FORMATS) {
     const btn = document.createElement("button");
-    btn.className = "format";
     btn.type = "button";
-    btn.title = `Download ${f.label} ${kind === "video" ? "video (MP4)" : "audio"} — ${f.tag}`;
-    btn.innerHTML = `<span class="format__q"></span><span class="format__tag"></span>`;
-    btn.querySelector(".format__q").textContent = f.label;
-    btn.querySelector(".format__tag").textContent = f.tag;
-    btn.addEventListener("click", () => startDownload(kind, f.q, btn));
-    els.formats.appendChild(btn);
+    btn.className = "quality-pill";
+    if (f.q === quality) btn.classList.add("is-active");
+    btn.title = `Download ${f.label} video — ${f.tag}, audio merged automatically`;
+    btn.innerHTML = `<span class="quality-pill__q"></span><span class="quality-pill__tag"></span>`;
+    btn.querySelector(".quality-pill__q").textContent = f.label;
+    btn.querySelector(".quality-pill__tag").textContent = f.tag;
+    btn.addEventListener("click", () => {
+      quality = f.q;
+      els.qualityPills.querySelectorAll(".quality-pill").forEach((p) =>
+        p.classList.toggle("is-active", p === btn));
+      startDownload("video", f.q, btn);
+    });
+    els.qualityPills.appendChild(btn);
   }
 }
 
 /* ---------------- start a download ---------------- */
-async function startDownload(kind, quality, btn) {
+async function startDownload(kindArg, qualityArg, btn) {
   if (!meta) { toast("Fetch the video info first.", "error"); return; }
   btn.disabled = true;
   try {
     const body = {
       url: meta.webpage_url || els.urlInput.value.trim(),
-      kind,
-      quality,
+      kind: kindArg,
+      quality: kindArg === "audio" ? "auto" : qualityArg,
     };
     const data = await api("/api/download", {
       method: "POST",
@@ -259,10 +271,6 @@ function applyJobs(jobs) {
   // live progress card
   const active = activeJobId ? jobs.find((j) => j.id === activeJobId) : null;
   if (active) updateProgressUI(active);
-  else if (activeJobId) {
-    activeJobId = null;
-    els.progressCard.hidden = true;
-  }
 
   const json = JSON.stringify(jobs.map(({ files, ...j }) => j));
   if (json !== lastJobJson) { renderLibrary(jobs); lastJobJson = json; }
@@ -274,33 +282,60 @@ function updateProgressUI(job) {
   els.progressPct.textContent = `${pct}%`;
   els.barFill.style.width = `${Math.min(100, Math.max(0, job.progress))}%`;
   els.progressPhase.textContent = job.phase || job.status;
+  els.progressPhase.style.color = "";
 
   if (job.status === "done") {
     els.barFill.classList.add("bar__fill--done");
     els.cancelBtn.hidden = true;
-    els.progressPhase.style.color = "";
+    els.progressSize.textContent = job.files.some((f) => f.size > 0)
+      ? `Size ${fmtBytes(job.files.find((f) => f.size > 0)?.size)}`
+      : "Size —";
     els.progressSpeed.textContent = "—";
     els.progressEta.textContent = "—";
+
     const fileIdx = job.files.findIndex((f) => f.kind === "video" || f.kind === "audio");
     if (fileIdx >= 0) {
+      const file = job.files[fileIdx];
       els.saveBtn.hidden = false;
       els.saveBtn.href = `/api/file/${job.id}/${fileIdx}`;
-      els.saveBtn.setAttribute("download", job.files[fileIdx].name);
+      els.saveBtn.setAttribute("download", file.name);
+      // save to the user's device automatically (once)
+      if (!autoSaved.has(job.id)) {
+        autoSaved.add(job.id);
+        triggerDownload(els.saveBtn.href, file.name);
+      }
     }
   } else if (job.status === "error" || job.status === "canceled") {
     els.barFill.classList.remove("bar__fill--done");
     els.cancelBtn.hidden = true;
     els.saveBtn.hidden = true;
     els.progressPhase.textContent = job.error || "Canceled";
-    els.progressPhase.style.color = "var(--red)";
+    els.progressPhase.style.color = "var(--text-dim)";
     els.progressSpeed.textContent = "—";
     els.progressEta.textContent = "—";
   } else {
-    els.progressPhase.style.color = "";
     els.cancelBtn.hidden = false;
+    // byte-accurate size when available
+    if (job.total_bytes) {
+      els.progressSize.textContent = `${fmtBytes(job.downloaded_bytes)} of ${fmtBytes(job.total_bytes)}`;
+    } else if (job.downloaded_bytes) {
+      els.progressSize.textContent = fmtBytes(job.downloaded_bytes);
+    } else {
+      els.progressSize.textContent = "—";
+    }
     els.progressSpeed.textContent = `Speed ${fmtSpeed(job.speed)}`;
     els.progressEta.textContent = job.eta != null ? `ETA ${fmtDuration(job.eta)}` : "—";
   }
+}
+
+function triggerDownload(href, name) {
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 /* ---------------- library ---------------- */
@@ -332,7 +367,7 @@ function renderLibrary(jobs) {
     card.innerHTML = `
       <div class="file-card__thumb">
         ${thumb ? `<img src="/api/file/${job.id}/${job.files.indexOf(thumb)}" alt="" loading="lazy">` : icon}
-        <span class="file-card__badge">${ext} · ${job.kind === "audio" ? job.quality.toUpperCase() : media.kind}</span>
+        <span class="file-card__badge">${ext}${job.kind === "audio" ? " · AUTO" : ""}</span>
       </div>
       <div class="file-card__body">
         <div class="file-card__name"></div>
@@ -378,4 +413,5 @@ els.cancelBtn.addEventListener("click", async () => {
 /* ---------------- boot ---------------- */
 refresh();
 setInterval(refresh, 1200);
-document.querySelectorAll(".tabs .tab")[0].click(); // ensure active styling
+renderQualityPills(); // ensure pills exist before first render
+setKind("video");      // ensure active styling

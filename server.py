@@ -180,7 +180,7 @@ class Handler(BaseHTTPRequestHandler):
         if blocked:
             return self._send_json(403, {"ok": False, "error": reason})
         kind = body.get("kind") or "video"
-        quality = str(body.get("quality") or ("best" if kind == "video" else "mp3"))
+        quality = str(body.get("quality") or ("best" if kind == "video" else "auto"))
         if kind not in ("video", "audio"):
             return self._send_json(400, {"ok": False, "error": "Bad kind."})
         if kind == "video" and quality not in dl.VIDEO_QUALITIES:
