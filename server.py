@@ -7,6 +7,8 @@ GET  /                       -> app (static/index.html)
 GET  /<asset>                -> static asset (style.css, app.js, favicon…)
 GET  /api/info?url=<url>     -> video metadata (no download)
 POST /api/download           -> start a job  {url, kind, quality}
+                                 or a playlist batch {url, kind, quality,
+                                 entries: [video urls...], title?}
 GET  /api/jobs               -> every job (poll this for progress)
 POST /api/jobs/<id>/cancel   -> cancel a running job
 DELETE /api/jobs/<id>        -> forget a finished job + delete its files
@@ -187,6 +189,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(400, {"ok": False, "error": "Bad quality."})
         if kind == "audio" and quality not in dl.AUDIO_CODECS:
             return self._send_json(400, {"ok": False, "error": "Bad codec."})
+
+        entries = body.get("entries")
+        if isinstance(entries, list) and entries:
+            urls = []
+            for e in entries:
+                eu = dl._sanitize_url(str(e))
+                eblocked, ereason = dl.ssrf_blocked(eu)
+                if eblocked:
+                    return self._send_json(403, {"ok": False, "error": ereason})
+                urls.append(eu)
+            if len(urls) > dl.PLAYLIST_CAP:
+                return self._send_json(
+                    400, {"ok": False,
+                          "error": f"Too many videos (max {dl.PLAYLIST_CAP})."})
+            parent = MANAGER.create_playlist_job(
+                url, kind, quality, urls, title=body.get("title"))
+            return self._send_json(200, {"ok": True, "job": parent.public(),
+                                         "playlist": True})
+
         job = MANAGER.create_job(url, kind, quality)
         return self._send_json(200, {"ok": True, "job": job.public()})
 

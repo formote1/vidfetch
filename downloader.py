@@ -35,6 +35,9 @@ FFMPEG_LOCATION = os.environ.get("VIDFETCH_FFMPEG", None) or None
 VIDEO_QUALITIES = ("best", "2160", "1440", "1080", "720", "480", "360")
 AUDIO_CODECS = ("auto", "mp3", "m4a", "opus", "flac")
 
+# max playlist entries returned by /api/info and accepted by /api/download
+PLAYLIST_CAP = 300
+
 MEDIA_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".m4v", ".mp3", ".m4a",
               ".opus", ".flac", ".wav", ".aac", ".ogg", ".oga", ".wma"}
 
@@ -131,6 +134,14 @@ class Job:
     files: list = field(default_factory=list)
     directory: Optional[str] = None
 
+    # playlist batch support
+    parent_id: Optional[str] = None        # child of a playlist job
+    is_playlist: bool = False              # this job is a playlist coordinator
+    children: list = field(default_factory=list)  # [child job ids] (playlist)
+    entries: list = field(default_factory=list)   # [{url, title}] (playlist)
+    done_count: Optional[int] = None
+    total_count: Optional[int] = None
+
     # internal
     _cancel: bool = field(default=False, repr=False)
     _parts: list = field(default_factory=list, repr=False)  # [{label, done, total, ratio}]
@@ -159,6 +170,12 @@ class Job:
             "source_url": self.source_url,
             "max_height": self.max_height,
             "files": [f.__dict__ for f in self.files],
+            "parent_id": self.parent_id,
+            "is_playlist": self.is_playlist,
+            "children": list(self.children),
+            "entries": list(self.entries),
+            "done_count": self.done_count,
+            "total_count": self.total_count,
         }
 
 
@@ -188,6 +205,47 @@ class DownloadManager:
         threading.Thread(target=self._worker, args=(job,), daemon=True).start()
         return job
 
+    def create_playlist_job(self, url: str, kind: str, quality: str,
+                            urls: list[str],
+                            title: Optional[str] = None) -> Job:
+        """Create a 'playlist' coordinator job plus one child job per video.
+
+        Children run through the normal worker (shared concurrency limit); the
+        parent aggregates their progress and rolls up done/error/canceled.
+        """
+        kind = kind if kind in ("video", "audio") else "video"
+        parent = Job(
+            id=uuid.uuid4().hex[:12],
+            url=url,
+            kind="playlist",
+            quality=quality,
+            created=time.time(),
+            status=ST_DOWNLOADING,
+            phase=f"Queuing {len(urls)} videos…",
+            title=title or "Playlist download",
+            is_playlist=True,
+            total_count=len(urls),
+            entries=[{"url": u, "title": None} for u in urls],
+        )
+        children: list[Job] = []
+        with self._lock:
+            self._jobs[parent.id] = parent
+            for u in urls:
+                child = Job(
+                    id=uuid.uuid4().hex[:12],
+                    url=u,
+                    kind=kind,
+                    quality=quality,
+                    created=time.time(),
+                    parent_id=parent.id,
+                )
+                self._jobs[child.id] = child
+                children.append(child)
+            parent.children = [c.id for c in children]
+        for child in children:
+            threading.Thread(target=self._worker, args=(child,), daemon=True).start()
+        return parent
+
     def get(self, job_id: str) -> Optional[Job]:
         with self._lock:
             return self._jobs.get(job_id)
@@ -203,6 +261,12 @@ class DownloadManager:
         if not job or job.status in (ST_DONE, ST_ERROR, ST_CANCELED):
             return False
         job._cancel = True
+        if job.is_playlist:
+            job.phase = "Canceling…"
+            for cid in job.children:
+                child = self.get(cid)
+                if child and child.status not in (ST_DONE, ST_ERROR, ST_CANCELED):
+                    child._cancel = True
         return True
 
     def delete(self, job_id: str) -> bool:
@@ -218,11 +282,15 @@ class DownloadManager:
         return True
 
     def info(self, url: str) -> dict:
-        """Lightweight metadata fetch (no download)."""
+        """Lightweight metadata fetch (no download).
+
+        Playlist / channel URLs are expanded (flat, capped) so the caller can
+        pick which videos to download; single videos keep the old shape.
+        """
         opts = {
             "quiet": True,
             "no_warnings": True,
-            "noplaylist": True,
+            "noplaylist": False,
             "extract_flat": "in_playlist",
             "socket_timeout": 20,
             "noprogress": True,
@@ -233,12 +301,10 @@ class DownloadManager:
         if not info:
             return {"ok": False, "error": "Could not read this URL."}
         if info.get("_type") == "playlist":
-            entries = [e for e in info.get("entries") or [] if e]
-            if not entries:
-                return {"ok": False, "error": "Playlist contains no videos."}
-            info = entries[0]
+            return self._playlist_info(info, url)
         return {
             "ok": True,
+            "is_playlist": False,
             "title": info.get("title") or "Untitled",
             "thumbnail": info.get("thumbnail"),
             "duration": info.get("duration"),
@@ -247,6 +313,35 @@ class DownloadManager:
             "webpage_url": info.get("webpage_url") or info.get("original_url") or url,
             "height": info.get("height"),
             "is_live": bool(info.get("is_live")),
+        }
+
+    @staticmethod
+    def _playlist_info(info: dict, fallback_url: str) -> dict:
+        entries = [e for e in info.get("entries") or [] if e]
+        if not entries:
+            return {"ok": False, "error": "Playlist contains no videos."}
+        count = int(info.get("playlist_count") or len(entries))
+        out = []
+        for e in entries[:PLAYLIST_CAP]:
+            thumbs = e.get("thumbnails") or []
+            out.append({
+                "id": e.get("id"),
+                "title": e.get("title") or "Untitled",
+                "url": e.get("webpage_url") or e.get("url") or e.get("original_url"),
+                "duration": e.get("duration"),
+                "duration_string": duration_string(e.get("duration")),
+                "thumbnail": thumbs[-1].get("url") if thumbs else e.get("thumbnail"),
+            })
+        return {
+            "ok": True,
+            "is_playlist": True,
+            "title": info.get("title") or "Playlist",
+            "thumbnail": info.get("thumbnail"),
+            "uploader": info.get("uploader") or info.get("channel") or info.get("creator"),
+            "webpage_url": info.get("webpage_url") or info.get("original_url") or fallback_url,
+            "count": count,
+            "truncated": count > len(out),
+            "entries": out,
         }
 
     # ------------------------------------------------------------------ #
@@ -308,24 +403,64 @@ class DownloadManager:
     def _worker(self, job: Job):
         """Respects the concurrency limit, then runs the download."""
         with self._slots:
-            if job._cancel:
-                self._fail(job, ST_CANCELED, "Canceled")
-                return
-            job.status = ST_DOWNLOADING
-            job.phase = "Contacting source…"
             try:
-                self._execute(job)
-            except yt_dlp.utils.DownloadCancelled:
-                self._fail(job, ST_CANCELED, "Canceled")
-            except yt_dlp.utils.DownloadError as exc:
-                self._fail(job, ST_ERROR, str(exc).splitlines()[0][:300])
-            except yt_dlp.utils.ExtractorError as exc:
-                self._fail(job, ST_ERROR, f"Extractor error: {exc}")
-            except (OSError, ValueError) as exc:
-                self._fail(job, ST_ERROR, str(exc)[:300])
-            except Exception as exc:  # pragma: no cover - safety net
-                log.exception("Unexpected download failure")
-                self._fail(job, ST_ERROR, f"Unexpected error: {exc}")
+                if job._cancel:
+                    self._fail(job, ST_CANCELED, "Canceled")
+                    return
+                job.status = ST_DOWNLOADING
+                job.phase = "Contacting source…"
+                try:
+                    self._execute(job)
+                except yt_dlp.utils.DownloadCancelled:
+                    self._fail(job, ST_CANCELED, "Canceled")
+                except yt_dlp.utils.DownloadError as exc:
+                    self._fail(job, ST_ERROR, str(exc).splitlines()[0][:300])
+                except yt_dlp.utils.ExtractorError as exc:
+                    self._fail(job, ST_ERROR, f"Extractor error: {exc}")
+                except (OSError, ValueError) as exc:
+                    self._fail(job, ST_ERROR, str(exc)[:300])
+                except Exception as exc:  # pragma: no cover - safety net
+                    log.exception("Unexpected download failure")
+                    self._fail(job, ST_ERROR, f"Unexpected error: {exc}")
+            finally:
+                self._on_child_end(job)
+
+    def _on_child_end(self, job: Job):
+        """Roll a finished/canceled child job into its parent playlist job."""
+        if not job.parent_id:
+            return
+        parent = self.get(job.parent_id)
+        if not parent or not parent.is_playlist:
+            return
+        with self._lock:
+            kids = [self._jobs[cid] for cid in parent.children
+                    if cid in self._jobs]
+            if not kids:
+                return
+            done = sum(1 for k in kids if k.status == ST_DONE)
+            err = sum(1 for k in kids if k.status == ST_ERROR)
+            can = sum(1 for k in kids if k.status == ST_CANCELED)
+            total = len(kids)
+            parent.done_count = done
+            parent.total_count = total
+            parent.progress = round(done / total * 100, 1) if total else 0.0
+            if done + err + can >= total:
+                if done and not err and not can:
+                    parent.status = ST_DONE
+                    parent.phase = f"{done} of {total} saved"
+                elif done:
+                    parent.status = ST_DONE
+                    parent.phase = (f"{done} of {total} saved · "
+                                    f"{err} failed, {can} canceled")
+                elif can and not err:
+                    parent.status = ST_CANCELED
+                    parent.phase = f"Canceled — {done} of {total} saved"
+                else:
+                    parent.status = ST_ERROR
+                    parent.phase = "All downloads failed"
+            else:
+                parent.status = ST_DOWNLOADING
+                parent.phase = f"Downloaded {done} of {total}…"
 
     def _fail(self, job: Job, status: str, message: str):
         job.status = status

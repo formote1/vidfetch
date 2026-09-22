@@ -8,13 +8,16 @@ it runs on the standard library.
 ## Features
 
 - 🎬 **Video downloads** — MP4 up to 4K (best merge of video + audio streams)
-- 🎵 **Audio extraction** — MP3 (192 kbps), M4A, OPUS, FLAC
+- 📼 **Playlist downloads** — paste a playlist/channel link, tick the videos you
+  want (or grab all), and the batch downloads with live aggregate progress
+- 🎵 **Audio extraction** — MP3 / M4A (auto-picked), no codec decisions needed
 - 📋 **Metadata fetch** — thumbnail, title, duration, uploader before you download
 - 📊 **Live progress** — animated bar, speed, ETA, merge/conversion stage
 - 🗂️ **Downloads library** — every finished file stays listed with save & delete
-- ✂️ **Cancel support** — abort a running or queued download cleanly
+- ✂️ **Cancel support** — abort a running or queued download cleanly (playlists
+  cancel everything still queued)
 - 🛡️ **Local-first** — everything runs on your machine; no accounts, no ads
-- 🖥️ **Modern dark UI** — no CDNs, no frameworks, pure HTML/CSS/JS
+- 🖥️ **Minimal dark UI** — warm monochrome palette, no CDNs, no frameworks
 
 ## Requirements
 
@@ -49,7 +52,7 @@ CLI flags `--host`, `--port` and `--debug` override `VIDFETCH_HOST`/`VIDFETCH_PO
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/info?url=…` | Video metadata (no download) |
-| `POST` | `/api/download` | Body `{url, kind: video\|audio, quality}` — starts a job |
+| `POST` | `/api/download` | Body `{url, kind: video\|audio, quality}` — starts a job. Add `entries: [video urls…]` to download a selected set from a playlist (returns a coordinator job; `playlist: true`) |
 | `GET` | `/api/jobs` | All jobs (poll this for progress) |
 | `GET` | `/api/jobs/<id>` | Single job |
 | `POST` | `/api/jobs/<id>/cancel` | Cancel a running job |
@@ -59,7 +62,10 @@ CLI flags `--host`, `--port` and `--debug` override `VIDFETCH_HOST`/`VIDFETCH_PO
 ## How downloads work
 
 1. You paste a URL; the server extracts metadata with yt-dlp (`extract_flat`).
-2. Starting a format queues a job (concurrency-limited background thread).
+   Playlist/channel links are expanded into a capped video list you can pick from.
+2. Starting a format queues a job (concurrency-limited background thread); a
+   playlist batch creates one child job per picked video plus a coordinator job
+   that aggregates their progress.
 3. yt-dlp picks the best stream ≤ your chosen quality, and **FFmpeg merges
    video+audio into MP4** (`merge_output_format=mp4`) or converts audio to the
    requested codec (`FFmpegExtractAudio`).
@@ -75,7 +81,8 @@ CLI flags `--host`, `--port` and `--debug` override `VIDFETCH_HOST`/`VIDFETCH_PO
 - Downloads are confined to per-job directories inside `downloads/`, and file
   requests are served by index with a real-path containment check (no path
   traversal).
-- Playlist URLs are **not** followed (`noplaylist`) — one video per request.
+- Playlist URLs are expanded into a flat, capped video list (`PLAYLIST_CAP`,
+  default 300); only user-picked entries are downloaded.
 - Binding defaults to `127.0.0.1` so the app is only reachable from your own
   machine. Don't expose it to the open internet without auth.
 

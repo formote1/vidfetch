@@ -32,8 +32,8 @@
 
     <!-- Intro (editorial prose) -->
     <section class="intro">
-      <p>Paste a link, pick a quality — the audio is added automatically and the
-        file lands on your device. Runs locally, powered by
+      <p>Paste a link — a single video or a whole playlist — pick a quality, and
+        the file lands on your device. Runs locally, powered by
         <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener">yt-dlp</a>
         and <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a>.</p>
     </section>
@@ -83,6 +83,18 @@
         </div>
         <h3 id="info-title">—</h3>
 
+        <!-- playlist picker (shown only for playlist URLs) -->
+        <div class="playlist-panel" id="playlist-panel" hidden>
+          <div class="playlist-head">
+            <label class="pl-all">
+              <input type="checkbox" id="pl-select-all" checked>
+              <span>all</span>
+            </label>
+            <span class="pl-selected" id="pl-selected">0 of 0 selected</span>
+          </div>
+          <div class="playlist-list" id="playlist-list"></div>
+        </div>
+
         <div class="seg" role="group" aria-label="Output type">
           <button class="seg-btn is-active" data-kind="video" type="button">Video</button>
           <button class="seg-btn" data-kind="audio" type="button">Audio only</button>
@@ -92,10 +104,10 @@
         <div class="pills" id="quality-pills"></div>
 
         <!-- audio auto-format -->
-        <div class="auto-pill" id="auto-pill" hidden>
+        <button class="auto-pill" id="auto-pill" type="button" hidden>
           <span class="auto-pill__q">Auto</span>
           <span class="auto-pill__tag">— MP3 / M4A, best available</span>
-        </div>
+        </button>
 
         <p class="audio-note" id="audio-note" hidden>
           <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"

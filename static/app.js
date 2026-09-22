@@ -22,6 +22,10 @@ const els = {
   qualityPills: $("#quality-pills"),
   autoPill: $("#auto-pill"),
   audioNote: $("#audio-note"),
+  playlistPanel: $("#playlist-panel"),
+  plSelectAll: $("#pl-select-all"),
+  plSelected: $("#pl-selected"),
+  playlistList: $("#playlist-list"),
   progressCard: $("#progress-card"),
   progressTitle: $("#progress-title"),
   progressPhase: $("#progress-phase"),
@@ -46,6 +50,7 @@ let activeJobId = null;     // job shown in the progress card
 let lastJobJson = "";       // for diffing library renders
 let knownJobs = new Map();  // id -> last status (for transition toasts)
 let autoSaved = new Set();  // job ids already auto-saved (avoid repeats)
+let selected = new Set();   // indices of meta.entries chosen for download
 
 /* ---------------- helpers ---------------- */
 function fmtBytes(n) {
@@ -133,8 +138,14 @@ function renderInfo(data) {
   els.infoTitle.textContent = data.title;
   els.metaSite.textContent = domainOf(data.webpage_url || data.thumbnail || "");
   els.metaSite.title = data.webpage_url || "";
-  els.metaDuration.hidden = !data.duration_string;
-  els.metaDuration.textContent = data.duration_string || "";
+  els.metaDuration.hidden = !data.duration_string && !data.is_playlist;
+  if (data.is_playlist) {
+    els.metaDuration.textContent = data.truncated
+      ? `${data.count} videos · listing ${data.entries.length}`
+      : `${data.count} videos`;
+  } else {
+    els.metaDuration.textContent = data.duration_string || "";
+  }
   els.metaUploader.hidden = !data.uploader;
   els.metaUploader.textContent = data.uploader || "";
 
@@ -152,10 +163,70 @@ function renderInfo(data) {
     els.thumbPh.textContent = (data.title || "?").trim().split(" ")[0].slice(0, 3).toUpperCase();
   }
   els.thumbBadge.hidden = false;
-  els.thumbBadge.textContent = data.is_live ? "LIVE" : (data.duration_string || "video");
+  els.thumbBadge.textContent = data.is_playlist
+    ? "PLAYLIST"
+    : (data.is_live ? "LIVE" : (data.duration_string || "video"));
+
+  if (data.is_playlist) renderPlaylist(data);
+  else hidePlaylist();
+
   setKind(kind); // re-render the selector for the active kind
   els.infoCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
+
+/* ---------------- playlist picker ---------------- */
+function renderPlaylist(data) {
+  selected = new Set();
+  els.playlistPanel.hidden = false;
+  els.playlistList.innerHTML = "";
+  const list = els.playlistList;
+  data.entries.forEach((e, i) => {
+    const row = document.createElement("div");
+    row.className = "pl-row";
+    const thumb = e.thumbnail
+      ? `<img class="pl-thumb" src="${e.thumbnail}" alt="" loading="lazy">`
+      : `<span class="pl-thumb pl-thumb--ph">${(e.title || "?").trim()[0] || "?"}</span>`;
+    row.innerHTML = `
+      <input type="checkbox" class="pl-check" data-i="${i}" checked>
+      <span class="pl-num">${i + 1}</span>
+      ${thumb}
+      <span class="pl-body">
+        <span class="pl-title"></span>
+        <span class="pl-dur">${e.duration_string ? e.duration_string + " · " : ""}video</span>
+      </span>`;
+    row.querySelector(".pl-title").textContent = e.title;
+    row.querySelector(".pl-check").addEventListener("change", (ev) => {
+      if (ev.target.checked) selected.add(i);
+      else selected.delete(i);
+      updateSelection();
+    });
+    list.appendChild(row);
+  });
+  selected = new Set(data.entries.map((_, i) => i));
+  updateSelection();
+}
+
+function hidePlaylist() {
+  selected = new Set();
+  els.playlistPanel.hidden = true;
+  els.playlistList.innerHTML = "";
+}
+
+function updateSelection() {
+  const n = meta && meta.entries ? meta.entries.length : 0;
+  els.plSelected.textContent = `${selected.size} of ${n} selected`;
+  els.plSelectAll.checked = n > 0 && selected.size === n;
+}
+
+els.plSelectAll.addEventListener("change", (ev) => {
+  if (!meta || !meta.is_playlist) return;
+  els.playlistList.querySelectorAll(".pl-check").forEach((c) => {
+    c.checked = ev.target.checked;
+  });
+  selected = new Set();
+  if (ev.target.checked) meta.entries.forEach((_, i) => selected.add(i));
+  updateSelection();
+});
 
 /* ---------------- video / audio toggle ---------------- */
 els.segBtns.forEach((btn) => {
@@ -217,6 +288,16 @@ async function startDownload(kindArg, qualityArg, btn) {
       kind: kindArg,
       quality: kindArg === "audio" ? "auto" : qualityArg,
     };
+    if (meta.is_playlist) {
+      if (!selected.size) {
+        toast("Select at least one video.", "error");
+        return;
+      }
+      body.entries = [...selected].sort((a, b) => a - b)
+        .map((i) => meta.entries[i]?.url || meta.entries[i]?.webpage_url || "")
+        .filter(Boolean);
+      body.title = meta.title;
+    }
     const data = await api("/api/download", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -224,13 +305,21 @@ async function startDownload(kindArg, qualityArg, btn) {
     });
     if (!data.ok) throw new Error(data.error || "Download failed to start.");
     showProgressFor(data.job);
-    toast("Download started — see progress below.", "info");
+    toast(data.playlist
+      ? `Playlist started — ${selected.size} video${selected.size === 1 ? "" : "s"} queued.`
+      : "Download started — see progress below.", "info");
   } catch (err) {
     toast(err.message, "error");
   } finally {
     btn.disabled = false;
   }
 }
+
+// audio-only downloads start from the Auto pill itself
+els.autoPill.addEventListener("click", () => {
+  if (kind !== "audio") return;
+  startDownload("audio", "auto", els.autoPill);
+});
 
 function showProgressFor(job) {
   activeJobId = job.id;
@@ -261,6 +350,7 @@ function applyJobs(jobs) {
   for (const job of jobs) {
     const prev = knownJobs.get(job.id);
     if (prev && prev !== job.status && (job.status === "done" || job.status === "error" || job.status === "canceled")) {
+      if (job.parent_id) continue; // playlists: quiet per-video toasts
       if (job.status === "done") toast(`Finished: ${job.title || "download"}`, "ok");
       else if (job.status === "error") toast(job.error || "Download failed.", "error");
       else toast("Download canceled.", "info");
@@ -278,6 +368,7 @@ function applyJobs(jobs) {
 
 function updateProgressUI(job) {
   if (!job) return;
+  if (job.is_playlist) return updatePlaylistProgress(job);
   const pct = Math.round(job.progress);
   els.progressPct.textContent = `${pct}%`;
   els.barFill.style.width = `${Math.min(100, Math.max(0, job.progress))}%`;
@@ -336,6 +427,35 @@ function triggerDownload(href, name) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+/* ---------------- playlist progress (aggregate of child jobs) ---------------- */
+function updatePlaylistProgress(job) {
+  const total = job.total_count || job.entries?.length || 0;
+  const done = job.done_count || 0;
+  const terminal = job.status === "done" || job.status === "error" || job.status === "canceled";
+  const pct = total ? Math.round((done / total) * 100) : 0;
+
+  els.progressPct.textContent = `${pct}%`;
+  els.barFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  els.progressPhase.textContent = job.phase || job.status;
+  els.progressPhase.style.color = "";
+  els.progressSize.textContent = total ? `${done} of ${total} videos` : "—";
+  els.progressSpeed.textContent = "—";
+  els.progressEta.textContent = "—";
+  els.saveBtn.hidden = true;
+
+  if (terminal) {
+    if (job.status === "done") els.barFill.classList.add("bar__fill--done");
+    else els.barFill.classList.remove("bar__fill--done");
+    els.cancelBtn.hidden = true;
+    if (job.status === "error" || job.status === "canceled") {
+      els.progressPhase.style.color = "var(--text-dim)";
+    }
+  } else {
+    els.barFill.classList.remove("bar__fill--done");
+    els.cancelBtn.hidden = false;
+  }
 }
 
 /* ---------------- library ---------------- */
